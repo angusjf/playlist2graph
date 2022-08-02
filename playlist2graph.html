@@ -1,0 +1,43 @@
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <script src="./playlist2graph.js"></script>
+
+    <style>
+        :root {
+            font-family: sans-serif;
+        }
+
+        .nodeImage {
+            --size: 40px;
+            width: var(--size);
+            height: var(--size);
+            transform: translate(calc(var(--size) / -2), calc(var(--size) / -2));
+        }
+
+        .hoverText {
+            font-size: 18px;
+            paint-order: stroke;
+            stroke: black;
+            stroke-width: 3px;
+            stroke-linecap: butt;
+            stroke-linejoin: miter;
+            font-weight: 800;
+            fill: white;
+        }
+    </style>
+</head>
+
+<body></body>
+
+
+<script>
+    const app = Elm.Main.init({node: document.body, flags: JSON.parse(window.localStorage.getItem('save'))});
+    app.ports.save.subscribe((x) => {
+        window.localStorage.setItem('save', JSON.stringify(x));
+        console.log(x);
+    })
+</script>
+
+</html>

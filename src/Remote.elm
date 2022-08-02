@@ -6,6 +6,7 @@ import Http
 type Remote a
     = Fetching
     | Done a
+    | Partial a
     | Error Http.Error
 
 
@@ -15,8 +16,27 @@ withDefault default remote =
         Fetching ->
             default
 
+        Partial a ->
+            a
+
         Done a ->
             a
 
         Error _ ->
             default
+
+
+done : Remote a -> Remote a
+done remote =
+    case remote of
+        Fetching ->
+            Fetching
+
+        Partial a ->
+            Done a
+
+        Done a ->
+            Done a
+
+        Error x ->
+            Error x

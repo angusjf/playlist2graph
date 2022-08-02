@@ -2,7 +2,6 @@ module Spotify exposing (..)
 
 import Http exposing (Error(..), Response(..))
 import Json.Decode
-import Task exposing (Task)
 
 
 type alias Playlist =
@@ -10,22 +9,18 @@ type alias Playlist =
 
 
 type alias Item =
-    { artists : List Artist }
-
-
-type alias Album =
-    { imgUrl : String }
+    { artistIds : List String }
 
 
 type alias Artist =
-    { id : String, name : String, imgUrl : String }
+    { id : String, name : String, imgUrl : Maybe String, genres : List String }
 
 
-playlistsArtists : Playlist -> List Artist
+playlistsArtists : Playlist -> List String
 playlistsArtists playlist =
     playlist
         |> .items
-        |> List.concatMap .artists
+        |> List.concatMap .artistIds
 
 
 playlistDecoder : Json.Decode.Decoder Playlist
@@ -36,46 +31,39 @@ playlistDecoder =
 
 itemDecoder : Json.Decode.Decoder Item
 itemDecoder =
-    Json.Decode.map (\( a, b ) -> Item (List.map (\artist -> { artist | imgUrl = b.imgUrl }) a))
-        (Json.Decode.field "track"
-            (Json.Decode.map2 Tuple.pair
-                (Json.Decode.field "artists" <| Json.Decode.list artistDecoder)
-                (Json.Decode.field "album" albumDecoder)
-            )
+    Json.Decode.field "track"
+        (Json.Decode.map Item
+            (Json.Decode.field "artists" <| Json.Decode.list (Json.Decode.field "id" Json.Decode.string))
         )
 
 
-albumDecoder : Json.Decode.Decoder Album
-albumDecoder =
-    Json.Decode.map Album
-        (Json.Decode.field "images"
-            (Json.Decode.map
-                (Maybe.withDefault "" << List.head << List.reverse)
-                (Json.Decode.list (Json.Decode.field "url" Json.Decode.string))
-            )
-        )
+maybeFlat : Maybe (Maybe a) -> Maybe a
+maybeFlat m =
+    case m of
+        Just (Just a) ->
+            Just a
+
+        _ ->
+            Nothing
 
 
 artistDecoder : Json.Decode.Decoder Artist
 artistDecoder =
-    Json.Decode.map2 (\id name -> Artist id name "")
+    Json.Decode.map4 Artist
         (Json.Decode.field "id" Json.Decode.string)
         (Json.Decode.field "name" Json.Decode.string)
-
-
-getArtists : String -> (Result Http.Error (List Artist) -> msg) -> Int -> Cmd msg
-getArtists accessToken toMsg offset =
-    let
-        id =
-            --"6fuUY64Kvu49VhQlYck2PR"
-            "7odAmSxIw5X6DrldzMrb0x"
-    in
-    getRequest
-        { accessToken = accessToken
-        , path = "playlists/" ++ id ++ "/tracks?offset=" ++ String.fromInt offset
-        , toMsg = toMsg
-        , decoder = Json.Decode.map playlistsArtists playlistDecoder
-        }
+        (Json.Decode.field "images"
+            (Json.Decode.map
+                (Maybe.map Tuple.second << List.head << List.sortBy (\( height, _ ) -> height))
+                (Json.Decode.list
+                    (Json.Decode.map2 Tuple.pair
+                        (Json.Decode.field "height" Json.Decode.int)
+                        (Json.Decode.field "url" Json.Decode.string)
+                    )
+                )
+            )
+        )
+        (Json.Decode.field "genres" (Json.Decode.list Json.Decode.string))
 
 
 getRequest : { accessToken : String, path : String, toMsg : Result Http.Error a -> msg, decoder : Json.Decode.Decoder a } -> Cmd msg
@@ -95,11 +83,49 @@ getRequest { accessToken, path, toMsg, decoder } =
         }
 
 
-getRelatedArtists : String -> (Result Http.Error (List Artist) -> msg) -> Artist -> Cmd msg
-getRelatedArtists accessToken toMsg { id } =
+fetchPlaylistData :
+    { playlistId : String
+    , accessToken : String
+    , toMsg : Result Error (List String) -> msg
+    , offset : Int
+    }
+    -> Cmd msg
+fetchPlaylistData { playlistId, accessToken, toMsg, offset } =
+    getRequest
+        { accessToken = accessToken
+        , path = "playlists/" ++ playlistId ++ "/tracks?offset=" ++ String.fromInt offset
+        , toMsg = toMsg
+        , decoder = Json.Decode.map playlistsArtists playlistDecoder
+        }
+
+
+fetchArtistsData :
+    { artistIds : List String
+    , accessToken : String
+    , toMsg : Result Error (List Artist) -> msg
+    }
+    -> Cmd msg
+fetchArtistsData { artistIds, accessToken, toMsg } =
+    getRequest
+        { accessToken = accessToken
+        , path = "artists?ids=" ++ String.join "," artistIds
+        , toMsg = toMsg
+        , decoder = Json.Decode.field "artists" <| Json.Decode.list artistDecoder
+        }
+
+
+fetchRelatedArtists :
+    { accessToken : String
+    , toMsg : Result Error (List String) -> msg
+    , id : String
+    }
+    -> Cmd msg
+fetchRelatedArtists { accessToken, toMsg, id } =
     getRequest
         { accessToken = accessToken
         , path = "artists/" ++ id ++ "/related-artists"
         , toMsg = toMsg
-        , decoder = Json.Decode.field "artists" (Json.Decode.list artistDecoder)
+        , decoder =
+            Json.Decode.map (List.map .id) <|
+                Json.Decode.field "artists" (Json.Decode.list artistDecoder)
         }
